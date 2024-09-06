@@ -1,5 +1,8 @@
 using MarsIncidentReporter.Data;
+using MarsIncidentReporter.Services;
 using Microsoft.EntityFrameworkCore;
+
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -10,7 +13,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // Configure In-Memory Database
-builder.Services.AddDbContext<AppDbContext>(options => options.UseInMemoryDatabase("MarsIncidentReportsDB"));
+builder.Services.AddHttpClient<SpaceXApiService>();
 
 var app = builder.Build();
 

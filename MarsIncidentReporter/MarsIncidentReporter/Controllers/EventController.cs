@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using MarsIncidentReporter.Services;
 
 namespace MarsIncidentReporter.Controllers
 {
@@ -7,10 +8,18 @@ namespace MarsIncidentReporter.Controllers
   [ApiController]
   public class EventController : ControllerBase
   {
-    [HttpGet("launches")]
-    public IActionResult GetLaunches()
+    private readonly SpaceXApiService _spaceXApiService;
+
+    public EventController(SpaceXApiService spaceXApiService)
     {
-      return Ok("Launches data returned.");
+      _spaceXApiService = spaceXApiService;
+    }
+
+    [HttpGet("launches")]
+    public async Task<IActionResult> GetLaunches()
+    {
+      var launches = await _spaceXApiService.GetLaunchesAsync();
+      return Ok(launches);
     }
   }
 }
