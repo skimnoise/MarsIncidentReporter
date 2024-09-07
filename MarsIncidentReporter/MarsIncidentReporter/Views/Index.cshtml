@@ -1,0 +1,14 @@
+﻿<h1>Welcome to the Home Page</h1>
+<p>
+    <!-- Login link (visible when user is not authenticated) -->
+    @if (!User.Identity.IsAuthenticated)
+    {
+        <a asp-controller="Account" asp-action="Login">Login</a>
+    }
+
+    <!-- Logout link (visible when user is authenticated) -->
+    @if (User.Identity.IsAuthenticated)
+    {
+        <a asp-controller="Account" asp-action="Logout">Logout</a>
+    }
+</p>

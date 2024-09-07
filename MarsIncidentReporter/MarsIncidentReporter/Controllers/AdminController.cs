@@ -1,11 +1,13 @@
 ﻿using MarsIncidentReporter.Data;
 using MarsIncidentReporter.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MarsIncidentReporter.Controllers
 {
-  [Route("api/[controller]")]
+  [Authorize(Roles = "Admin")]
   [ApiController]
+  [Route("api/[controller]")]
   public class AdminController : ControllerBase
   {
     private readonly AppDbContext _context;

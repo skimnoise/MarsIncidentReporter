@@ -1,11 +1,13 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using MarsIncidentReporter.Services;
+using Microsoft.AspNetCore.Authorization;
 
 namespace MarsIncidentReporter.Controllers
 {
-  [Route("api/[controller]")]
+  [Authorize(Roles = "Reader")]
   [ApiController]
+  [Route("api/[controller]")]
   public class EventController : ControllerBase
   {
     private readonly SpaceXApiService _spaceXApiService;
