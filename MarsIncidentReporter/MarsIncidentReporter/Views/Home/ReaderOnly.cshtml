@@ -1,0 +1,15 @@
+﻿<h1>Reader Page</h1>
+<p>
+    Only accessible to Reader users.
+</p>
+<p>
+    @if (!User.Identity.IsAuthenticated)
+    {
+        <a href="@Url.Action("Login", "Account")">Login</a>
+    }
+    else
+
+    {
+        <a href="@Url.Action("Logout", "Account")">Logout</a>
+    }
+</p>

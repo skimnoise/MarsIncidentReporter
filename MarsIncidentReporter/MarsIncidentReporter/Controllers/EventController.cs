@@ -5,106 +5,106 @@ using Microsoft.AspNetCore.Authorization;
 
 namespace MarsIncidentReporter.Controllers
 {
-  [Authorize(Roles = "Reader")]
-  [ApiController]
-  [Route("api/[controller]")]
-  public class EventController : ControllerBase
-  {
-    private readonly SpaceXApiService _spaceXApiService;
-
-    public EventController(SpaceXApiService spaceXApiService)
+    [Authorize(Policy = "AdminOrReader")]
+    [ApiController]
+    [Route("api/[controller]")]
+    public class EventController : ControllerBase
     {
-      _spaceXApiService = spaceXApiService;
-    }
+        private readonly SpaceXApiService _spaceXApiService;
 
-    [HttpGet("launches")]
-    public async Task<IActionResult> GetLaunches(
-        [FromQuery] int pageNumber = 1,
-        [FromQuery] int pageSize = 10,
-        [FromQuery] string sortBy = "launch_date_utc",
-        [FromQuery] bool isAscending = true,
-        [FromQuery] string? missionName = null,
-        [FromQuery] string? rocketName = null,
-        [FromQuery] bool? launchSuccess = null)
-    {
-      try
-      {
-        // Get data from SpaceX API
-        var launches = await _spaceXApiService.GetLaunchesAsync();
-
-        if (!string.IsNullOrEmpty(missionName))
+        public EventController(SpaceXApiService spaceXApiService)
         {
-          launches = launches.Where(l => l.MissionName.Contains(missionName, StringComparison.OrdinalIgnoreCase));
+            _spaceXApiService = spaceXApiService;
         }
 
-        if (launches == null)
+        [HttpGet("launches")]
+        public async Task<IActionResult> GetLaunches(
+            [FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10,
+            [FromQuery] string sortBy = "launch_date_utc",
+            [FromQuery] bool isAscending = true,
+            [FromQuery] string? missionName = null,
+            [FromQuery] string? rocketName = null,
+            [FromQuery] bool? launchSuccess = null)
         {
-          return NotFound("No launches found.");
+            try
+            {
+                // Get data from SpaceX API
+                var launches = await _spaceXApiService.GetLaunchesAsync();
+
+                if (!string.IsNullOrEmpty(missionName))
+                {
+                    launches = launches.Where(l => l.MissionName.Contains(missionName, StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (launches == null)
+                {
+                    return NotFound("No launches found.");
+                }
+
+                if (!string.IsNullOrEmpty(missionName))
+                {
+                    launches = launches.Where(l => l.MissionName.Contains(missionName, StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (!string.IsNullOrEmpty(rocketName))
+                {
+                    launches = launches.Where(l => l.Rocket?.RocketName.Contains(rocketName, StringComparison.OrdinalIgnoreCase) == true);
+                }
+
+                if (launchSuccess.HasValue)
+                {
+                    launches = launches.Where(l => l.LaunchSuccess == launchSuccess.Value);
+                }
+
+                launches = isAscending
+                  ? launches.OrderBy(l => GetPropertyValue(l, sortBy))
+                  : launches.OrderByDescending(l => GetPropertyValue(l, sortBy));
+
+                var totalItems = launches.Count();
+                var pagedLaunches = launches.Skip((pageNumber - 1) * pageSize).Take(pageSize);
+
+                var response = new
+                {
+                    TotalItems = totalItems,
+                    PageNumber = pageNumber,
+                    PageSize = pageSize,
+                    Launches = pagedLaunches
+                };
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
+            }
         }
 
-        if (!string.IsNullOrEmpty(missionName))
+        private object GetPropertyValue(object obj, string propertyName)
         {
-          launches = launches.Where(l => l.MissionName.Contains(missionName, StringComparison.OrdinalIgnoreCase));
+            return obj.GetType().GetProperty(propertyName)?.GetValue(obj, null);
         }
 
-        if (!string.IsNullOrEmpty(rocketName))
+
+        [HttpGet("launchpads")]
+        public async Task<IActionResult> GetLaunchPads()
         {
-          launches = launches.Where(l => l.Rocket?.RocketName.Contains(rocketName, StringComparison.OrdinalIgnoreCase) == true);
+            var launchPads = await _spaceXApiService.GetLaunchPadsAsync();
+            return Ok(launchPads);
         }
 
-        if (launchSuccess.HasValue)
+        [HttpGet("upcoming-launches")]
+        public async Task<IActionResult> GetUpcomingLaunches()
         {
-          launches = launches.Where(l => l.LaunchSuccess == launchSuccess.Value);
+            var upcomingLaunches = await _spaceXApiService.GetUpcomingLaunchesAsync();
+            return Ok(upcomingLaunches);
         }
 
-        launches = isAscending
-          ? launches.OrderBy(l => GetPropertyValue(l, sortBy))
-          : launches.OrderByDescending(l => GetPropertyValue(l, sortBy));
-
-        var totalItems = launches.Count();
-        var pagedLaunches = launches.Skip((pageNumber - 1) * pageSize).Take(pageSize);
-
-        var response = new
+        [HttpGet("capsules")]
+        public async Task<IActionResult> GetCapsules()
         {
-          TotalItems = totalItems,
-          PageNumber = pageNumber,
-          PageSize = pageSize,
-          Launches = pagedLaunches
-        };
-
-        return Ok(response);
-      }
-      catch (Exception ex)
-      {
-        return StatusCode(StatusCodes.Status500InternalServerError, ex.Message);
-      }
+            var capsules = await _spaceXApiService.GetCapsulesAsync();
+            return Ok(capsules);
+        }
     }
-
-    private object GetPropertyValue(object obj, string propertyName)
-    {
-      return obj.GetType().GetProperty(propertyName)?.GetValue(obj, null);
-    }
-
-
-    [HttpGet("launchpads")]
-    public async Task<IActionResult> GetLaunchPads()
-    {
-      var launchPads = await _spaceXApiService.GetLaunchPadsAsync();
-      return Ok(launchPads);
-    }
-
-    [HttpGet("upcoming-launches")]
-    public async Task<IActionResult> GetUpcomingLaunches()
-    {
-      var upcomingLaunches = await _spaceXApiService.GetUpcomingLaunchesAsync();
-      return Ok(upcomingLaunches);
-    }
-
-    [HttpGet("capsules")]
-    public async Task<IActionResult> GetCapsules()
-    {
-      var capsules = await _spaceXApiService.GetCapsulesAsync();
-      return Ok(capsules);
-    }
-  }
 }

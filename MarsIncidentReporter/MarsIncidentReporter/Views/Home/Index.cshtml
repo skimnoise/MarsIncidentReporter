@@ -1,0 +1,14 @@
+﻿<h1>Welcome to the Home Page</h1>
+<p>
+    <!-- Login link (visible when user is not authenticated) -->
+    @if (!User.Identity.IsAuthenticated)
+    {
+        <a href="@Url.Action("Login", "Account")">Login</a>
+    }
+
+    else
+    {
+        <!-- Logout link (visible when user is authenticated) -->
+        <a href="@Url.Action("Logout", "Account")">Logout</a>
+    }
+</p>

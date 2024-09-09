@@ -1,6 +1,10 @@
+using MarsIncidentReporter.Data;
 using MarsIncidentReporter.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
 
@@ -8,21 +12,33 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
+builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    // Add security definition for Bearer tokens
-    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "My API", Version = "v1" });
+
+    // Add OAuth2 support in Swagger
+    c.AddSecurityDefinition("oauth2", new OpenApiSecurityScheme
     {
-        Name = "Authorization",
-        Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT",
-        In = ParameterLocation.Header,
-        Description = "Enter 'Bearer' followed by a space and the JWT token."
+        Type = SecuritySchemeType.OAuth2,
+        Flows = new OpenApiOAuthFlows
+        {
+            AuthorizationCode = new OpenApiOAuthFlow
+            {
+                AuthorizationUrl = new Uri($"https://{builder.Configuration["Auth0:Domain"]}/authorize"),
+                TokenUrl = new Uri($"https://{builder.Configuration["Auth0:Domain"]}/oauth/token"),
+                Scopes = new Dictionary<string, string>
+                {
+                    { "openid", "OpenID Connect scope" },
+                    { "profile", "Access to your profile information" },
+                    { "email", "Access to your email address" }
+                }
+            }
+        }
     });
 
-    // Add security requirement to Swagger
+    // Add security requirement to use OAuth2 for all API calls
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
@@ -31,20 +47,31 @@ builder.Services.AddSwaggerGen(c =>
                 Reference = new OpenApiReference
                 {
                     Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
+                    Id = "oauth2"
                 }
             },
-            Array.Empty<string>()
+            new List<string> { "openid", "profile", "email" }  // Specify the scopes required
         }
     });
+});
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowSpecificOrigins",
+        policy =>
+        {
+            policy.WithOrigins("https://localhost:7181", "https://localhost:7181/swagger", "https://localhost:7181/Account/Login")
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+        });
 });
 
 // Configure Authentication with Auth0
 builder.Services.AddAuthentication(options =>
 {
-  options.DefaultAuthenticateScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+  options.DefaultAuthenticateScheme = CookieAuthenticationDefaults.AuthenticationScheme; ;
   options.DefaultSignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-  options.DefaultChallengeScheme = OpenIdConnectDefaults.AuthenticationScheme;
+  options.DefaultChallengeScheme = CookieAuthenticationDefaults.AuthenticationScheme;
 })
 .AddCookie()
 .AddOpenIdConnect("Auth0", options =>
@@ -55,7 +82,7 @@ builder.Services.AddAuthentication(options =>
   options.ResponseType = "code";
 
   // Configure the callback path for Auth0
-  options.CallbackPath = new PathString("/Account/Callback");
+  options.CallbackPath = new PathString("/callback");
   options.ClaimsIssuer = "Auth0";
 
   // Save tokens for access control
@@ -72,43 +99,79 @@ builder.Services.AddAuthentication(options =>
   {
     OnRedirectToIdentityProvider = context =>
     {
-      context.ProtocolMessage.SetParameter("audience", "https://dev-mfay1fcfb1wvdp3y.us.auth0.com/api/v2/");
+      context.ProtocolMessage.SetParameter("audience", builder.Configuration["Auth0:Audience"]);
       return Task.CompletedTask;
     }
   };
+})
+.AddJwtBearer(options =>
+{
+    options.Authority = $"https://{builder.Configuration["Auth0:Domain"]}";
+    options.Audience = builder.Configuration["Auth0:Audience"];
+    options.RequireHttpsMetadata = true; // Ensure HTTPS is used
+    //options.SaveToken = true; // Save token for authentication
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidIssuer = $"https://{builder.Configuration["Auth0:Domain"]}",
+        ValidateAudience = true,
+        ValidAudience = builder.Configuration["Auth0:Audience"],
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+    };
 });
 
 builder.Services.AddAuthorization(options =>
 {
-  options.AddPolicy("Admin", policy => policy.RequireRole("Admin"));
-  options.AddPolicy("Reader", policy => policy.RequireRole("Reader"));
+    options.AddPolicy("Admin", policy => policy.RequireClaim("https://localhost:7181/roles", "Admin"));
+    options.AddPolicy("Reader", policy => policy.RequireClaim("https://localhost:7181/roles", "Reader"));
+    options.AddPolicy("AdminOrReader", policy => policy.RequireClaim("https://localhost:7181/roles", "Admin", "Reader"));
 });
 
 builder.Services.AddHttpClient<SpaceXApiService>();
-
-var app = builder.Build();
-
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseInMemoryDatabase("MarsIncidentReportsDB"));
+builder.Services.AddLogging(logging =>
 {
-  app.UseSwagger();
-  app.UseSwaggerUI();
-}
-
-app.UseHttpsRedirection();
-app.UseStaticFiles();
-
-app.UseRouting();
-app.UseAuthentication();
-app.UseAuthorization();
-
-// Redirect to the login page by default
-app.MapGet("/", (HttpContext context) =>
-{
-    context.Response.Redirect("/Account/Login");
-    return Task.CompletedTask;
+    logging.ClearProviders();
+    logging.AddConsole();
+    logging.AddDebug();
 });
 
-app.MapControllers();
+var app = builder.Build();
+app.UseCors("AllowSpecificOrigin");
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage(); // Show detailed exception page in development
+    app.UseSwagger();
+}
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "My API V1");
+    c.OAuthClientId(builder.Configuration["Auth0:ClientId"]);
+    c.OAuthClientSecret(builder.Configuration["Auth0:ClientSecret"]);
+    c.OAuthUsePkce();
+    c.OAuthScopes("openid profile email");
+    c.OAuthAppName("My API");
+    c.OAuth2RedirectUrl("https://localhost:7181/swagger/oauth2-redirect.html");
+        c.OAuthAdditionalQueryStringParams(new Dictionary<string, string>
+    {
+        { "audience", builder.Configuration["Auth0:Audience"] }
+    });
+});
+
+
+// Enable static files and routing
+app.UseStaticFiles();
+app.UseRouting();
+
+app.UseAuthentication();
+app.UseAuthorization(); // Enable authorization middleware
+
+// Configure endpoint routing
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=Account}/{action=Login}/{id?}");
 
 app.Run();
